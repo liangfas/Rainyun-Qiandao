@@ -1402,13 +1402,22 @@ function updateCronPreview() {
 }
 
 async function apiFetch(path, options = {}) {
+  const pathname = window.location.pathname || "/";
+  const basePath =
+    pathname === "/"
+      ? ""
+      : pathname.endsWith("/")
+        ? pathname.slice(0, -1)
+        : pathname;
+  const normalizedPath = typeof path === "string" && path.startsWith("/") ? path : `/${path}`;
+  const requestPath = basePath ? `${basePath}${normalizedPath}` : normalizedPath;
   const headers = options.headers || {};
   const token = getToken();
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
   headers["Content-Type"] = "application/json";
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(requestPath, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401) {
     setToken(null);

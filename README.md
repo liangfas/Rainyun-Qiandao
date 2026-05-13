@@ -159,6 +159,33 @@ rainyun/
 
 ## 常见问题
 
+### Nginx 反代到子路径（例如 `/rainyun/`）
+
+如果你通过 `https://example.com/rainyun/` 访问，请确保做了两件事：
+
+1. 访问入口必须带尾随斜杠（`/rainyun/`），建议把 `/rainyun` 301 到 `/rainyun/`。
+2. 反代规则使用带尾随 `/` 的 `proxy_pass`，让 Nginx 去掉前缀后转发到容器的 `/`。
+
+示例配置（按需补充 headers/超时等）：
+
+```nginx
+location = /rainyun {
+    return 301 /rainyun/;
+}
+
+location = /favicon.ico {
+    return 204;
+}
+
+location ^~ /rainyun/ {
+    proxy_pass http://127.0.0.1:8000/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
 ### 一键签到报 “Unable to obtain driver for chrome”
 请确认容器内存在 chromedriver，并配置正确路径：
 ```
