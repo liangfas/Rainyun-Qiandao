@@ -50,18 +50,7 @@ jobs:
           from rainyun.browser.session import BrowserSession
 
           def _patched_init_selenium(self):
-              ops = uc.ChromeOptions()
-              ops.add_argument("--no-sandbox")
-              ops.add_argument("--window-size=1920,1080")
-              if self.debug:
-                  ops.add_experimental_option("detach", True)
-              import subprocess
-              try:
-                  v = subprocess.check_output(["google-chrome-stable","--version"],text=True).strip()
-                  major = int(v.split()[-1].split(".")[0])
-                  driver = uc.Chrome(options=ops, headless=True, version_main=major)
-              except Exception:
-                  driver = uc.Chrome(options=ops, headless=True)
+              driver = uc.Chrome(headless=True)
               return driver
 
           BrowserSession._init_selenium = _patched_init_selenium
