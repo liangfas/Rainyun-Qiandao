@@ -31,13 +31,17 @@ jobs:
               f.write(c1)
           print('OK: patched pages.py')
 
-          # 2) session.py: 在 --disable-dev-shm-usage 后逐行插入反检测参数
+          # 2) session.py: 替换 --headless 为新版模式 + 添加反检测参数
           p2 = 'rainyun/browser/session.py'
           with open(p2, 'r') as f:
               lines = f.readlines()
           new_lines = []
           done = False
           for line in lines:
+              # 关键: 旧版 --headless 会被验证码检测，换成 --headless=new
+              if line.strip() == 'ops.add_argument("--headless")':
+                  sp = ' ' * (len(line) - len(line.lstrip()))
+                  line = sp + 'ops.add_argument("--headless=new")\n'
               new_lines.append(line)
               if not done and '--disable-dev-shm-usage' in line:
                   sp = ' ' * (len(line) - len(line.lstrip()))
