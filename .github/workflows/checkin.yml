@@ -14,10 +14,11 @@ jobs:
       - name: Checkout 代码
         uses: actions/checkout@v4
 
-      - name: 安装 Google Chrome
+      - name: 安装 Google Chrome 和 Xvfb
         run: |
           wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
           sudo dpkg -i /tmp/chrome.deb || sudo apt-get -f install -y
+          sudo apt-get install -y xvfb
           echo "CHROME_BIN=/usr/bin/google-chrome-stable" >> "$GITHUB_ENV"
 
       - name: 设置 Python 3.11
@@ -53,7 +54,8 @@ jobs:
               import subprocess
               v = subprocess.check_output(["google-chrome-stable","--version"],text=True).strip()
               major = int(v.split()[-1].split(".")[0])
-              driver = uc.Chrome(headless=True, version_main=major)
+              driver = uc.Chrome(version_main=major)
+              driver.set_window_size(1920, 1080)
               return driver
 
           BrowserSession._init_selenium = _patched_init_selenium
@@ -91,4 +93,5 @@ jobs:
           RAINYUN_API_KEY: ${{ secrets.RAINYUN_API_KEY }}
           LINUX_MODE: true
           MAX_DELAY: 0
-        run: python checkin.py
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python checkin.py
