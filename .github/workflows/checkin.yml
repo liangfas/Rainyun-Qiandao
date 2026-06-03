@@ -50,7 +50,10 @@ jobs:
           from rainyun.browser.session import BrowserSession
 
           def _patched_init_selenium(self):
-              driver = uc.Chrome(headless=True)
+              import subprocess
+              v = subprocess.check_output(["google-chrome-stable","--version"],text=True).strip()
+              major = int(v.split()[-1].split(".")[0])
+              driver = uc.Chrome(headless=True, version_main=major)
               return driver
 
           BrowserSession._init_selenium = _patched_init_selenium
