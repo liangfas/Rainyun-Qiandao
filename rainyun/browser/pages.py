@@ -394,53 +394,32 @@ class RewardPage:
             except Exception:
                 # 兜底：遇到遮罩/重渲染导致 click 失败时尝试 JS 点击
                 self.ctx.driver.execute_script("arguments[0].click();", earn)
-          except TimeoutException:
-              done_pattern = self._detect_daily_sign_done_pattern()
-              if done_pattern:
-                  logger.info(
-                      f":down_arrow: 用户 {user_label} 今日已签到（每日签到模块检测到：{done_pattern}），跳过签到流程"
-                  )
-                  current_points, earned = self._log_points(start_points)
-                  return {
-                      "status": "already_signed",
-                      "current_points": current_points,
-                      "earned": earned,
-                  }
+        except TimeoutException:
+            done_pattern = self._detect_daily_sign_done_pattern()
+            if done_pattern:
+                logger.info(
+                    f":down_arrow: 用户 {user_label} 今日已签到（每日签到模块检测到：{done_pattern}），跳过签到流程"
+                )
+                current_points, earned = self._log_points(start_points)
+                return {
+                    "status": "already_signed",
+                    "current_points": current_points,
+                    "earned": earned,
+                }
 
-              snapshot = self._get_daily_sign_snapshot()
-              logger.error(
-                  "用户 %s 签到按钮诊断: header_count=%s, button_count=%s, header_text=%s, card_excerpt=%s",
-                  user_label,
-                  snapshot["header_count"],
-                  snapshot["button_count"],
-                  snapshot["header_text"],
-                  snapshot["card_excerpt"],
-              )
-
-              # 兜底：Selenium click 不可用时，尝试 JavaScript 直接定位并点击
-              try:
-                  js_buttons = self.ctx.driver.find_elements(By.XPATH, XPATH_CONFIG["SIGN_IN_BTN"])
-                  if not js_buttons:
-                      # 更宽松匹配：不限标签类型，只看文案
-                      js_buttons = self.ctx.driver.find_elements(
-                          By.XPATH,
-                          "//div[contains(@class, 'card-header') and .//span[contains(normalize-space(.), '每日签到')]]//*[contains(normalize-space(.), '领取奖励') or contains(normalize-space(.), '去签到')]",
-                      )
-                  if js_buttons:
-                      self.ctx.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", js_buttons[0])
-                      time.sleep(2)
-                      self.ctx.driver.execute_script("arguments[0].click();", js_buttons[0])
-                      logger.info(f"用户 {user_label} 通过 JS 兜底点击领取奖励")
-                  else:
-                      header_text = self._get_daily_sign_header_text()
-                      if any(claim_text in header_text for claim_text in self._DAILY_SIGN_CLAIM_TEXTS):
-                          raise Exception("未找到每日签到按钮（模块仍显示可领取），可能是页面渲染延迟或结构变更")
-                      raise Exception("未找到每日签到按钮，且未检测到已签到状态，可能页面结构已变更")
-              except Exception as js_err:
-                  if "未找到每日签到按钮" in str(js_err):
-                      raise
-                  logger.error(f"用户 {user_label} JS 兜底点击也失败: {js_err}")
-                  raise Exception("签到按钮点击失败（Selenium 和 JS 均不可用）")
+            snapshot = self._get_daily_sign_snapshot()
+            logger.error(
+                "用户 %s 签到按钮诊断: header_count=%s, button_count=%s, header_text=%s, card_excerpt=%s",
+                user_label,
+                snapshot["header_count"],
+                snapshot["button_count"],
+                snapshot["header_text"],
+                snapshot["card_excerpt"],
+            )
+            header_text = self._get_daily_sign_header_text()
+            if any(claim_text in header_text for claim_text in self._DAILY_SIGN_CLAIM_TEXTS):
+                raise Exception("未找到每日签到按钮（模块仍显示可领取），可能是页面渲染延迟或结构变更")
+            raise Exception("未找到每日签到按钮，且未检测到已签到状态，可能页面结构已变更")
 
         logger.info(f"用户 {user_label} 处理验证码")
         try:
