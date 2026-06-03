@@ -34,10 +34,22 @@ jobs:
       - name: 生成签到脚本
         run: |
           cat > checkin.py << 'SCRIPT'
-          import os, sys, logging
+          import os, sys, logging, traceback
           sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
           from rainyun.config import Config
           from rainyun.main import run_with_config
+          def save_screenshot_on_error(driver, error_msg):
+              try:
+                  os.makedirs("screenshots", exist_ok=True)
+                  from datetime import datetime
+                  ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+                  path = f"screenshots/error_{ts}.png"
+                  driver.save_screenshot(path)
+                  with open(f"screenshots/error_{ts}_source.html", "w", encoding="utf-8") as f:
+                      f.write(driver.page_source or "")
+                  logging.info(f"截图已保存: {path}")
+              except Exception as e:
+                  logging.warning(f"截图保存失败: {e}")
           def main():
               logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
               user = os.environ.get("RAINYUN_USER", "")
@@ -54,7 +66,11 @@ jobs:
               os.makedirs("data", exist_ok=True)
               os.makedirs("temp", exist_ok=True)
               logging.info("===== Rainyun Checkin (GitHub Actions) =====")
-              success = run_with_config(config)
+              try:
+                  success = run_with_config(config)
+              except Exception as e:
+                  logging.error(f"签到异常: {e}")
+                  success = False
               logging.info("===== Result: %s =====", "SUCCESS" if success else "FAILED")
               return 0 if success else 1
           if __name__ == "__main__":
@@ -69,3 +85,12 @@ jobs:
           LINUX_MODE: true
           MAX_DELAY: 0
         run: python checkin.py
+
+      - name: 上传调试截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: screenshots/
+          retention-days: 3
+          if-no-files-found: ignore
