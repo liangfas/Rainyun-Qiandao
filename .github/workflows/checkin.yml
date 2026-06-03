@@ -11,51 +11,86 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 执行签到
+      - name: Checkout 代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Google Chrome
+        run: |
+          wget -q -O /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo dpkg -i /tmp/chrome.deb || sudo apt-get -f install -y
+          echo "CHROME_BIN=/usr/bin/google-chrome-stable" >> "$GITHUB_ENV"
+
+      - name: 设置 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装 Python 依赖
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+          pip install undetected-chromedriver
+
+      - name: 修复 pages.py
         run: |
           python3 -c "
-          import requests, json, os
-          from datetime import datetime
-
-          api_key = os.environ.get('RAINYUN_API_KEY', '')
-          if not api_key:
-              print('ERROR: RAINYUN_API_KEY is not set')
-              exit(1)
-
-          headers = {
-              'Content-Type': 'application/json',
-              'X-Api-Key': api_key
-          }
-          base = 'https://api.v2.rainyun.com'
-
-          # 签到前积分
-          info = requests.get(f'{base}/user/', headers=headers).json()
-          before = info.get('data', {}).get('Points', 0)
-          print(f'[{datetime.now()}] 签到前积分: {before}')
-
-          # 执行签到
-          result = requests.post(
-              f'{base}/user/reward/tasks',
-              headers=headers,
-              data=json.dumps({'task_name': '每日签到'})
-          ).json()
-          code = result.get('code', -1)
-          msg = result.get('message', '')
-          print(f'[{datetime.now()}] 签到结果: code={code}, message={msg}')
-
-          if code == 200:
-              print('签到成功！')
-          elif code == 30011:
-              print('今日已签到过')
-          else:
-              print(f'签到失败: {msg}')
-              exit(1)
-
-          # 签到后积分
-          info2 = requests.get(f'{base}/user/', headers=headers).json()
-          after = info2.get('data', {}).get('Points', 0)
-          earned = after - before
-          print(f'[{datetime.now()}] 签到后积分: {after} (本次 +{earned})')
+          with open('rainyun/browser/pages.py','r') as f: c=f.read()
+          c=c.replace('EC.element_to_be_clickable((By.XPATH, XPATH_CONFIG[\"SIGN_IN_BTN\"]))','EC.presence_of_element_located((By.XPATH, XPATH_CONFIG[\"SIGN_IN_BTN\"]))')
+          with open('rainyun/browser/pages.py','w') as f: f.write(c)
+          print('OK: patched pages.py')
           "
+
+      - name: 生成签到脚本
+        run: |
+          cat > checkin.py << 'SCRIPT'
+          import os, sys, logging
+          sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+          import undetected_chromedriver as uc
+          from rainyun.browser.session import BrowserSession
+
+          def _patched_init_selenium(self):
+              ops = uc.ChromeOptions()
+              ops.add_argument("--no-sandbox")
+              ops.add_argument("--window-size=1920,1080")
+              if self.debug:
+                  ops.add_experimental_option("detach", True)
+              driver = uc.Chrome(options=ops, headless=True)
+              return driver
+
+          BrowserSession._init_selenium = _patched_init_selenium
+
+          from rainyun.config import Config
+          from rainyun.main import run_with_config
+
+          def main():
+              logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+              user = os.environ.get("RAINYUN_USER", "")
+              pwd = os.environ.get("RAINYUN_PWD", "")
+              api_key = os.environ.get("RAINYUN_API_KEY", "")
+              if not user or not pwd:
+                  logging.error("RAINYUN_USER and RAINYUN_PWD are required")
+                  return 1
+              config = Config.from_env(os.environ)
+              config = config.__class__(**{**config.__dict__, "rainyun_user": user, "rainyun_pwd": pwd, "rainyun_api_key": api_key, "linux_mode": True, "max_delay": int(os.environ.get("MAX_DELAY", "0")), "cookie_file": "data/cookies/cookies_github.json"})
+              cookie_dir = os.path.dirname(config.cookie_file)
+              if cookie_dir:
+                  os.makedirs(cookie_dir, exist_ok=True)
+              os.makedirs("data", exist_ok=True)
+              os.makedirs("temp", exist_ok=True)
+              logging.info("===== Rainyun Checkin (GitHub Actions) =====")
+              success = run_with_config(config)
+              logging.info("===== Result: %s =====", "SUCCESS" if success else "FAILED")
+              return 0 if success else 1
+          if __name__ == "__main__":
+              sys.exit(main())
+          SCRIPT
+
+      - name: 执行签到
         env:
+          RAINYUN_USER: ${{ secrets.RAINYUN_USER }}
+          RAINYUN_PWD: ${{ secrets.RAINYUN_PWD }}
           RAINYUN_API_KEY: ${{ secrets.RAINYUN_API_KEY }}
+          LINUX_MODE: true
+          MAX_DELAY: 0
+        run: python checkin.py
