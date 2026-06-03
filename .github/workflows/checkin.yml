@@ -1,43 +1,71 @@
 name: 每日自动签到
 
 on:
-    # 定时触发：每天北京时间 8:00（UTC 0:00）
-    schedule:
-      - cron: '0 0 * * *'
-    # 支持手动触发，方便测试
-    workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
-    checkin:
-      name: 雨云签到
-      runs-on: ubuntu-latest
+  checkin:
+    name: 雨云签到
+    runs-on: ubuntu-latest
 
-      steps:
-        - name: Checkout 代码
-          uses: actions/checkout@v4
+    steps:
+      - name: Checkout 代码
+        uses: actions/checkout@v4
 
-        - name: 安装 Chromium 和 chromedriver
-          run: |
-            sudo apt-get update
-            sudo apt-get install -y chromium-browser chromium-chromedriver
-            echo "CHROME_BIN=/usr/bin/chromium-browser" >> "$GITHUB_ENV"
-            echo "CHROMEDRIVER_PATH=/usr/lib/chromium-browser/chromedriver" >> "$GITHUB_ENV"
+      - name: 安装 Chromium 和 chromedriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+          echo "CHROME_BIN=/usr/bin/chromium-browser" >> "$GITHUB_ENV"
+          echo "CHROMEDRIVER_PATH=/usr/lib/chromium-browser/chromedriver" >> "$GITHUB_ENV"
 
-        - name: 设置 Python 3.11
-          uses: actions/setup-python@v5
-          with:
-            python-version: '3.11'
+      - name: 设置 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-        - name: 安装 Python 依赖
-          run: |
-            pip install --upgrade pip setuptools wheel
-            pip install -r requirements.txt
+      - name: 安装 Python 依赖
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
 
-        - name: 执行签到
-          env:
-            RAINYUN_USER: ${{ secrets.RAINYUN_USER }}
-            RAINYUN_PWD: ${{ secrets.RAINYUN_PWD }}
-            RAINYUN_API_KEY: ${{ secrets.RAINYUN_API_KEY }}
-            LINUX_MODE: true
-            MAX_DELAY: 0
-          run: python checkin.py
+      - name: 生成签到脚本
+        run: |
+          cat > checkin.py << 'SCRIPT'
+          import os, sys, logging
+          sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+          from rainyun.config import Config
+          from rainyun.main import run_with_config
+          def main():
+              logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+              user = os.environ.get("RAINYUN_USER", "")
+              pwd = os.environ.get("RAINYUN_PWD", "")
+              api_key = os.environ.get("RAINYUN_API_KEY", "")
+              if not user or not pwd:
+                  logging.error("RAINYUN_USER and RAINYUN_PWD are required")
+                  return 1
+              config = Config.from_env(os.environ)
+              config = config.__class__(**{**config.__dict__, "rainyun_user": user, "rainyun_pwd": pwd, "rainyun_api_key": api_key, "linux_mode": True, "max_delay": int(os.environ.get("MAX_DELAY", "0")), "cookie_file": "data/cookies/cookies_github.json"})
+              cookie_dir = os.path.dirname(config.cookie_file)
+              if cookie_dir:
+                  os.makedirs(cookie_dir, exist_ok=True)
+              os.makedirs("data", exist_ok=True)
+              os.makedirs("temp", exist_ok=True)
+              logging.info("===== Rainyun Checkin (GitHub Actions) =====")
+              success = run_with_config(config)
+              logging.info("===== Result: %s =====", "SUCCESS" if success else "FAILED")
+              return 0 if success else 1
+          if __name__ == "__main__":
+              sys.exit(main())
+          SCRIPT
+
+      - name: 执行签到
+        env:
+          RAINYUN_USER: ${{ secrets.RAINYUN_USER }}
+          RAINYUN_PWD: ${{ secrets.RAINYUN_PWD }}
+          RAINYUN_API_KEY: ${{ secrets.RAINYUN_API_KEY }}
+          LINUX_MODE: true
+          MAX_DELAY: 0
+        run: python checkin.py
