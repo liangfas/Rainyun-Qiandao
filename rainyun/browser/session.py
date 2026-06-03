@@ -65,6 +65,7 @@ class BrowserSession:
             ops.add_argument("--headless")
             ops.add_argument("--disable-gpu")
             ops.add_argument("--disable-dev-shm-usage")
+            ops.add_argument("--window-size=1920,1080")
             # 低配模式：适用于 1核1G 小鸡
             if self.config.chrome_low_memory:
                 user = self.config.display_name or self.config.rainyun_user
