@@ -14,6 +14,44 @@ jobs:
       - name: Checkout 代码
         uses: actions/checkout@v4
 
+      - name: 恢复原始文件并打补丁
+        run: |
+          git checkout HEAD -- rainyun/browser/session.py rainyun/browser/pages.py
+
+          python3 << 'PATCH'
+          # 1) pages.py: 放宽按钮等待条件
+          p1 = 'rainyun/browser/pages.py'
+          with open(p1, 'r') as f:
+              c1 = f.read()
+          c1 = c1.replace(
+              'EC.element_to_be_clickable((By.XPATH, XPATH_CONFIG["SIGN_IN_BTN"]))',
+              'EC.presence_of_element_located((By.XPATH, XPATH_CONFIG["SIGN_IN_BTN"]))'
+          )
+          with open(p1, 'w') as f:
+              f.write(c1)
+          print('OK: patched pages.py')
+
+          # 2) session.py: 在 --disable-dev-shm-usage 后逐行插入反检测参数
+          p2 = 'rainyun/browser/session.py'
+          with open(p2, 'r') as f:
+              lines = f.readlines()
+          new_lines = []
+          done = False
+          for line in lines:
+              new_lines.append(line)
+              if not done and '--disable-dev-shm-usage' in line:
+                  sp = ' ' * (len(line) - len(line.lstrip()))
+                  new_lines.append(sp + 'ops.add_argument("--window-size=1920,1080")\n')
+                  new_lines.append(sp + 'ops.add_argument("--disable-blink-features=AutomationControlled")\n')
+                  new_lines.append(sp + 'ops.add_experimental_option("excludeSwitches", ["enable-automation"])\n')
+                  new_lines.append(sp + 'ops.add_experimental_option("useAutomationExtension", False)\n')
+                  new_lines.append(sp + 'ops.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")\n')
+                  done = True
+          with open(p2, 'w') as f:
+              f.writelines(new_lines)
+          print('OK: patched session.py')
+          PATCH
+
       - name: 安装 Chromium 和 chromedriver
         run: |
           sudo apt-get update
@@ -30,46 +68,6 @@ jobs:
         run: |
           pip install --upgrade pip setuptools wheel
           pip install -r requirements.txt
-
-      - name: 修复 headless 兼容性
-        run: |
-          cat > fix_headless.py << 'PATCH'
-          import re
-
-          # 1) pages.py: 放宽按钮等待条件
-          path1 = 'rainyun/browser/pages.py'
-          with open(path1, 'r') as f:
-              code1 = f.read()
-          old1 = 'EC.element_to_be_clickable((By.XPATH, XPATH_CONFIG["SIGN_IN_BTN"]))'
-          new1 = 'EC.presence_of_element_located((By.XPATH, XPATH_CONFIG["SIGN_IN_BTN"]))'
-          if old1 in code1:
-              code1 = code1.replace(old1, new1)
-              print('OK: patched pages.py')
-          else:
-              print('SKIP: pages.py pattern not found')
-          with open(path1, 'w') as f:
-              f.write(code1)
-
-          # 2) session.py: 添加反检测 Chrome 参数
-          path2 = 'rainyun/browser/session.py'
-          with open(path2, 'r') as f:
-              code2 = f.read()
-          insert_after = 'ops.add_argument("--disable-dev-shm-usage")'
-          extra_flags = '''ops.add_argument("--disable-dev-shm-usage")
-            ops.add_argument("--window-size=1920,1080")
-            ops.add_argument("--disable-blink-features=AutomationControlled")
-            ops.add_experimental_option("excludeSwitches", ["enable-automation"])
-            ops.add_experimental_option("useAutomationExtension", False)
-            ops.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")'''
-          if '--disable-blink-features' not in code2:
-              code2 = code2.replace(insert_after, extra_flags)
-              print('OK: patched session.py')
-          else:
-              print('SKIP: session.py already patched')
-          with open(path2, 'w') as f:
-              f.write(code2)
-          PATCH
-          python fix_headless.py
 
       - name: 生成签到脚本
         run: |
